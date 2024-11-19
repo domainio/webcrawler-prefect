@@ -10,7 +10,9 @@ from typing import Set, Dict, List, Tuple, Optional
 from prefect import flow, task, get_run_logger
 from dotenv import load_dotenv
 import logging
+import re
 from datetime import datetime
+from tabulate import tabulate
 
 # Load environment variables from .env file
 load_dotenv()
@@ -44,10 +46,48 @@ def normalize_url(url: str) -> str:
     ))
     return normalized
 
-def url_to_filename(url: str) -> str:
-    """Convert URL to a valid filename using hash."""
-    url_hash = hashlib.md5(url.encode()).hexdigest()
-    return f"{url_hash}.html"
+def sanitize_filename(url: str) -> str:
+    """
+    Convert URL to a valid filename by replacing invalid characters.
+    
+    Args:
+        url: URL to convert
+        
+    Returns:
+        Sanitized filename
+    """
+    # Remove scheme (http:// or https://)
+    filename = re.sub(r'^https?://', '', url)
+    
+    # Replace invalid filename characters with underscores
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    
+    # Replace multiple underscores with single underscore
+    filename = re.sub(r'_+', '_', filename)
+    
+    # Limit filename length (most filesystems have limits)
+    if len(filename) > 255:
+        filename = filename[:255]
+    
+    return filename
+
+@task
+async def save_page_content(url: str, content: str):
+    """
+    Save page content to a file.
+    
+    Args:
+        url: URL of the page
+        content: HTML content to save
+    """
+    os.makedirs('crawled_pages', exist_ok=True)
+    
+    # Use sanitized URL as filename
+    filename = sanitize_filename(url)
+    filepath = os.path.join('crawled_pages', f"{filename}.html")
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(content)
 
 @task(retries=3)
 async def extract_links(url: str, visited: Set[str]) -> Tuple[Set[str], dict]:
@@ -79,10 +119,7 @@ async def extract_links(url: str, visited: Set[str]) -> Tuple[Set[str], dict]:
                 html = await response.text()
                 
                 # Save HTML content
-                filename = url_to_filename(url)
-                filepath = os.path.join(HTML_STORE_DIR, filename)
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(html)
+                await save_page_content(url, html)
                 
                 soup = BeautifulSoup(html, 'html.parser')
                 same_domain_links = set()
@@ -172,40 +209,42 @@ async def run_crawler(urls: List[str], max_depth: int = 3) -> None:
         urls: List of URLs to crawl
         max_depth: Maximum depth to crawl for each URL
     """
-    flow_logger = get_run_logger()
+    task_logger = get_run_logger()
+    visited = set()
+    metrics = []
     
-    # Normalize input URLs
-    normalized_urls = {normalize_url(url) for url in urls}
-    flow_logger.info(f"Starting crawler flow for URLs: {normalized_urls}")
+    # Normalize initial URLs
+    urls = [normalize_url(url) for url in urls]
+    task_logger.info(f"Starting crawl of {len(urls)} URLs with max depth {max_depth}")
     
-    visited: Set[str] = set()
-    metrics: List[dict] = []
-    
-    for url in normalized_urls:
-        current_urls = {url}
-        for depth in range(max_depth):
-            flow_logger.info(f"Processing depth {depth}")
-            new_urls = await process_depth(
-                urls=current_urls,
-                visited=visited,
-                metrics=metrics,
-                current_depth=depth,
-                max_depth=max_depth
-            )
+    # Process each depth level
+    current_urls = set(urls)
+    for depth in range(max_depth + 1):
+        if not current_urls:
+            break
             
-            if not new_urls:
-                flow_logger.info(f"No more URLs to process at depth {depth}")
-                break
-                
-            current_urls = new_urls
+        task_logger.info(f"Processing depth {depth}, {len(current_urls)} URLs")
+        current_urls = await process_depth(current_urls, visited, metrics, depth, max_depth)
     
-    # Generate TSV report
+    # Create DataFrame and save report
     df = pd.DataFrame(metrics)
-    report_file = "crawl_report.tsv"
-    df.to_csv(report_file, sep='\t', index=False)
-    flow_logger.info(f"Crawling completed. Report saved to {report_file}")
-    flow_logger.info(f"Total URLs processed: {len(visited)}")
-    flow_logger.info(f"HTML files saved in: {HTML_STORE_DIR}")
+    
+    # Reorder columns for better readability
+    columns = ['url', 'depth', 'same_domain_links_count', 'total_links_count', 
+              'external_links_count', 'ratio', 'timestamp', 'success', 'error']
+    df = df[columns]
+    
+    # Format TSV with tabulate
+    formatted_table = tabulate(df, headers='keys', tablefmt='tsv', showindex=False, floatfmt='.6f')
+    with open('crawl_report.tsv', 'w') as f:
+        f.write(formatted_table)
+    
+    # Generate console report
+    print("\nCrawl Report Summary:")
+    print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
+    
+    task_logger.info(f"Crawl completed. Processed {len(visited)} unique URLs.")
+    task_logger.info(f"Report saved to crawl_report.tsv")
 
 if __name__ == "__main__":
     # Example usage of the crawler flow
