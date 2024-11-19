@@ -1,28 +1,38 @@
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual environment
-venv/
-env/
-.venv/
-
-# IDE files
-.vscode/
-.idea/
-
-# Crawler results
-.crawls/
-.scrape/
-.jobs/
-
-# Distribution / packaging
-dist/
+*.so
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
 
-# Logs
-*.log
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
 
-.DS_Store
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Prefect
+.prefect/
+prefect.db
