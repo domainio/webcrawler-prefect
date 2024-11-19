@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "c2"
+name = "webcrawler-prefect"
 version = "0.1.0"
 description = "Web crawler project using Prefect"
 authors = ["Your Name <your.email@example.com>"]

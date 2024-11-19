@@ -24,8 +24,8 @@ A high-performance asynchronous web crawler built with Python and Prefect for ef
 
 1. Extract the project:
 ```bash
-unzip web-crawler.zip
-cd web-crawler
+unzip webcrawler-prefect.zip
+cd webcrawler-prefect
 ```
 
 2. Create and activate a virtual environment:
