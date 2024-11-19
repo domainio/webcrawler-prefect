@@ -36,3 +36,6 @@ ENV/
 # Prefect
 .prefect/
 prefect.db
+
+crawled_pages/
+crawl_report.tsv
