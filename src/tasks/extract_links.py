@@ -42,7 +42,7 @@ async def extract_links(url: str, visited: Set[str]) -> Tuple[Set[str], dict]:
                     return set(), metrics
                 
                 html = await response.text()
-                await save_page_content(url, html)
+                await save_page_content.with_options(retries=2)(url, html)
                 
                 soup = BeautifulSoup(html, 'html.parser')
                 same_domain_links = set()

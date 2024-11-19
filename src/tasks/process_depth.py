@@ -5,7 +5,7 @@ from prefect import task
 
 from src.tasks.extract_links import extract_links
 
-@task
+@task(retries=2)
 async def process_depth(urls: Set[str], visited: Set[str], depth: int) -> Tuple[Set[str], List[dict]]:
     """
     Process all URLs at current depth level.
@@ -26,7 +26,7 @@ async def process_depth(urls: Set[str], visited: Set[str], depth: int) -> Tuple[
     for url in urls:
         if url not in visited:
             visited.add(url)
-            tasks.append(extract_links(url, visited))
+            tasks.append(extract_links.with_options(retries=2)(url, visited))
     
     if tasks:
         results = await asyncio.gather(*tasks)
