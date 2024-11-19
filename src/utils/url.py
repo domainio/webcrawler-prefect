@@ -1,4 +1,3 @@
-"""URL utility functions."""
 import re
 from urllib.parse import urlparse, urlunparse
 

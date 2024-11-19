@@ -1,4 +1,3 @@
-"""Task for extracting links from a webpage."""
 import aiohttp
 from bs4 import BeautifulSoup
 from datetime import datetime

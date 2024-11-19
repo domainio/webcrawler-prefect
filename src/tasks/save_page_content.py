@@ -1,4 +1,3 @@
-"""Task for saving page content to files."""
 import os
 from prefect import task
 
