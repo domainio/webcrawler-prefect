@@ -3,7 +3,7 @@ from urllib.parse import urlparse, urlunparse
 
 def normalize_url(url: str) -> str:
     """
-    Normalize a URL by removing fragments and standardizing format.
+    Normalize URL by removing fragments and trailing slashes.
     
     Args:
         url: URL to normalize
@@ -11,23 +11,16 @@ def normalize_url(url: str) -> str:
     Returns:
         Normalized URL
     """
-    # Parse URL
     parsed = urlparse(url)
-    
-    # Remove fragment and normalize
+    # Remove fragments and normalize path
     normalized = urlunparse((
         parsed.scheme,
-        parsed.netloc.lower(),
-        parsed.path,
+        parsed.netloc,
+        parsed.path.rstrip('/') or '/',
         parsed.params,
         parsed.query,
         ''  # Remove fragment
     ))
-    
-    # Remove trailing slash if present
-    if normalized.endswith('/'):
-        normalized = normalized[:-1]
-    
     return normalized
 
 def sanitize_filename(url: str) -> str:
@@ -42,10 +35,5 @@ def sanitize_filename(url: str) -> str:
     """
     # Remove scheme and special characters
     filename = re.sub(r'^https?://', '', url)
-    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    
-    # Ensure reasonable length
-    if len(filename) > 200:
-        filename = filename[:200]
-    
+    filename = re.sub(r'[^\w\-_.]', '_', filename)
     return filename
