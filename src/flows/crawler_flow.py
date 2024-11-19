@@ -22,14 +22,18 @@ async def crawler_flow(start_urls: List[str], max_depth: int = 2):
     all_metrics = []
     current_urls = set(start_urls)
     
+    # Process each depth level sequentially
     for depth in range(max_depth + 1):
+        if not current_urls:
+            break
+            
         logger.info(f"Processing depth {depth}, {len(current_urls)} URLs")
-        next_urls, metrics = await process_depth(current_urls, visited, depth)
+        # Pass max_depth to ensure proper depth limiting
+        next_urls, metrics = await process_depth(current_urls, visited, depth, max_depth)
         all_metrics.extend(metrics)
         current_urls = next_urls
         
-        if not current_urls:
-            break
+        logger.info(f"Completed depth {depth}, found {len(next_urls)} new URLs")
     
     # Create report
     df = pd.DataFrame(all_metrics)
