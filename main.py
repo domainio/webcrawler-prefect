@@ -3,8 +3,8 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from typing import Set, Dict, List
-from prefect import flow, task
+from typing import Set, Dict, List, Tuple
+from prefect import flow, task, get_run_logger
 from dotenv import load_dotenv
 import logging
 
@@ -12,37 +12,64 @@ import logging
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 @task(retries=3)
-async def extract_links(url: str) -> Set[str]:
-    """Extract all valid links from a given URL."""
+async def extract_links(url: str) -> Tuple[Set[str], float]:
+    """
+    Extract all valid links from a given URL and calculate page rank.
+    
+    Returns:
+        Tuple of (set of valid same-domain links, rank)
+        Rank is the ratio of same-domain links to all valid links
+    """
+    task_logger = get_run_logger()
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status != 200:
-                    logger.warning(f"Failed to fetch {url}, status: {response.status}")
-                    return set()
+                    task_logger.warning(f"Failed to fetch {url}, status: {response.status}")
+                    return set(), 0.0
                 
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
-                links = set()
+                same_domain_links = set()
+                all_valid_links = set()
                 
                 base_domain = urlparse(url).netloc
                 for link in soup.find_all('a'):
                     href = link.get('href')
                     if href:
-                        absolute_url = urljoin(url, href)
-                        # Only include links from the same domain
-                        if urlparse(absolute_url).netloc == base_domain:
-                            links.add(absolute_url)
+                        try:
+                            absolute_url = urljoin(url, href)
+                            # Only count URLs we can parse
+                            parsed_url = urlparse(absolute_url)
+                            if parsed_url.scheme in ('http', 'https'):
+                                all_valid_links.add(absolute_url)
+                                if parsed_url.netloc == base_domain:
+                                    same_domain_links.add(absolute_url)
+                        except Exception:
+                            continue
                 
-                logger.info(f"Found {len(links)} valid links on {url}")
-                return links
+                # Calculate rank
+                rank = len(same_domain_links) / len(all_valid_links) if all_valid_links else 0.0
+                
+                # Log using Prefect's logger
+                task_logger.info("Page Analysis:")
+                task_logger.info(f"URL: {url}")
+                task_logger.info(f"Same domain links: {len(same_domain_links)}")
+                task_logger.info(f"All valid links: {len(all_valid_links)}")
+                task_logger.info(f"Rank: {rank:.2f}")
+                
+                return same_domain_links, rank
     except Exception as e:
-        logger.error(f"Error processing {url}: {str(e)}")
-        return set()
+        task_logger.error(f"Error processing {url}: {str(e)}")
+        return set(), 0.0
 
 @task
 async def process_depth(
@@ -69,9 +96,9 @@ async def process_depth(
     all_links = set()
     for future in futures:
         try:
-            result = future.result()
-            if isinstance(result, set):
-                all_links.update(result)
+            links, rank = future.result()
+            if isinstance(links, set):
+                all_links.update(links)
         except Exception as e:
             logger.error(f"Error getting result from task: {str(e)}")
             continue
@@ -90,13 +117,14 @@ async def run_crawler(urls: List[str], max_depth: int = 3) -> Dict[str, Dict[str
     Returns:
         Dict mapping start URLs to their crawl results
     """
-    logger.info(f"Starting crawler flow for URLs: {urls}")
+    flow_logger = get_run_logger()
+    flow_logger.info(f"Starting crawler flow for URLs: {urls}")
     visited: Dict[str, int] = {}  # URL -> depth mapping
     
     for url in urls:
         current_urls = {url}
         for depth in range(max_depth):
-            logger.info(f"Processing {url} at depth {depth}")
+            flow_logger.info(f"Processing {url} at depth {depth}")
             # Process current depth
             new_urls = await process_depth(
                 urls=current_urls,
@@ -106,12 +134,12 @@ async def run_crawler(urls: List[str], max_depth: int = 3) -> Dict[str, Dict[str
             )
             
             if not new_urls:
-                logger.info(f"No more URLs to process for {url} at depth {depth}")
+                flow_logger.info(f"No more URLs to process for {url} at depth {depth}")
                 break
                 
             current_urls = new_urls
             
-    logger.info(f"Crawling completed. Total URLs processed: {len(visited)}")
+    flow_logger.info(f"Crawling completed. Total URLs processed: {len(visited)}")
     return visited
 
 if __name__ == "__main__":
