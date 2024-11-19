@@ -20,6 +20,3 @@ pytest = "^7.0.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.scripts]
-etl = "c2.main:etl_flow"
-crawl = "c2.main:run_crawler"
